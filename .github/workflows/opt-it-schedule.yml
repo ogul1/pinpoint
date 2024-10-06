@@ -1,0 +1,105 @@
+
+name: Modified it-schedule
+jobs:
+  integration-test:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Setup Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    - name: Install dependencies
+      run: |-
+        python -m pip install --upgrade pip
+        pip install inotify
+    - name: Run inotifywait
+      run: |-
+        python3 -c "
+        import inotify.adapters
+        import inotify.constants
+        import os
+        from datetime import datetime, timezone
+        with open('/home/runner/inotifywait-log-integration-test.csv', 'w') as log_file:
+          i = inotify.adapters.InotifyTree('/home/runner/work/pinpoint/pinpoint', inotify.constants.IN_CREATE | inotify.constants.IN_ACCESS)
+          for event in i.event_gen(yield_nones=False):
+            (_, type_names, path, filename) = event
+            now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S.%f') + 'Z'
+            events = ','.join(type_names)
+            log_file.write(f'{now};{path};{filename};{events}\n')
+            log_file.flush()
+            os.fsync(log_file.fileno())
+        " &
+    - name: Git checkout
+      uses: actions/checkout@v4
+    - run: touch optcd-3.txt
+    - name: Cache node modules
+      uses: actions/cache@v4
+      with:
+        path: '**/node_modules'
+        key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |-
+          ${{ runner.os }}-node-modules-
+    - run: touch optcd-4.txt
+    - name: Cache Maven packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    - run: touch optcd-5.txt
+    - name: Cache node install
+      uses: actions/cache@v4
+      with:
+        path: node_install
+        key: ${{ runner.os }}-node_install-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |-
+          ${{ runner.os }}-node_install-
+    - run: touch optcd-6.txt
+    - name: Cleanup resources
+      run: |-
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/share/dotnet
+        df -h
+    - run: touch optcd-7.txt
+    - name: Set JAVA_HOME
+      run: |-
+        echo "JAVA_8_HOME=$JAVA_HOME_8_X64" >> $GITHUB_ENV
+        echo "JAVA_11_HOME=$JAVA_HOME_11_X64" >> $GITHUB_ENV
+        echo "JAVA_17_HOME=$JAVA_HOME_17_X64" >> $GITHUB_ENV
+        echo "JAVA_HOME=$JAVA_HOME_8_X64" >> $GITHUB_ENV
+    - run: touch optcd-8.txt
+    - name: Java Environment
+      run: env | grep '^JAVA'
+    - run: touch optcd-9.txt
+    - name: Maven build
+      run: |-
+        ./mvnw --batch-mode -Pit-module -DskipTests clean install
+    - run: touch optcd-10.txt
+    - name: Integration Test
+      working-directory: ./agent-module/plugins-it
+      run: ../../mvnw --batch-mode clean install -Pit-module  -Dmaven.test.failure.ignore=true
+    - run: touch optcd-11.txt
+    - name: Collect reports
+      working-directory: ./agent-module/plugins-it
+      run: |-
+        mkdir -p ./temp
+        find . -regex ".*/target/failsafe-reports/TEST.*\.xml" -exec cp "{}" ./temp \;
+        ls temp
+    - run: touch optcd-12.txt
+    - name: Publish Unit Test Results
+      uses: dorny/test-reporter@v1
+      with:
+        name: pinpoint-test-results
+        reporter: java-junit
+        path: ./agent-module/plugins-it/temp/TEST-*.xml
+        fail-on-error: 'false'
+    - run: touch optcd-13.txt
+    - name: Upload inotifywait logs
+      uses: actions/upload-artifact@v4
+      with:
+        name: inotifywait-integration-test
+        path: /home/runner/inotifywait-log-integration-test.csv
+    name: integration-test
+'on':
+- push
+- workflow_dispatch
